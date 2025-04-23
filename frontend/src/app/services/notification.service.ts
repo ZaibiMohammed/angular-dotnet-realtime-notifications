@@ -174,7 +174,7 @@ export class NotificationService {
         tap(() => {
           // Update all notifications in the local store
           const current = this.notificationsSource.value;
-          const updated = current.map(n => ({ ...n, isRead: true }));
+          const updated = current.map(n => ({...n, isRead: true}));
           this.notificationsSource.next(updated);
           this.updateUnreadCount();
           this.eventBus.cast(NotificationEvent.NOTIFICATIONS_UPDATED, updated);
@@ -189,35 +189,29 @@ export class NotificationService {
     return this.http.delete(`${this.apiUrl}/${notificationId}`)
       .pipe(
         tap(() => {
+          // Remove from local store - will also be handled by SignalR, but we do it here for quick UI response
           this.removeNotificationFromLocalStore(notificationId);
         })
       );
   }
 
   /**
-   * Acknowledge a notification using SignalR
+   * Process a list of notifications from the API
    */
-  public async acknowledgeNotification(notificationId: string): Promise<void> {
-    await this.signalRService.acknowledgeNotification(notificationId);
+  private processNotifications(notifications: any[]): Notification[] {
+    return notifications.map(n => this.processNotification(n));
   }
 
   /**
-   * Process an array of notifications (convert timestamps to Date objects)
+   * Process a single notification from the API
    */
-  private processNotifications(notifications: Notification[]): Notification[] {
-    return notifications.map(notification => this.processNotification(notification));
-  }
-
-  /**
-   * Process a single notification (convert timestamp to Date object)
-   */
-  private processNotification(notification: Notification): Notification {
-    return {
-      ...notification,
-      timestamp: typeof notification.timestamp === 'string' 
-        ? new Date(notification.timestamp) 
-        : notification.timestamp
-    };
+  private processNotification(notification: any): Notification {
+    // Convert timestamp to Date object if it's a string
+    if (typeof notification.timestamp === 'string') {
+      notification.timestamp = new Date(notification.timestamp);
+    }
+    
+    return notification as Notification;
   }
 
   /**
@@ -226,18 +220,13 @@ export class NotificationService {
   private addNotificationToLocalStore(notification: Notification): void {
     const current = this.notificationsSource.value;
     
-    // Ensure we're working with a processed notification with proper timestamp
-    const processedNotification = this.processNotification(notification);
-    
     // Check if notification already exists
-    const exists = current.some(n => n.id === processedNotification.id);
-    
-    if (!exists) {
-      // Add the new notification to the beginning of the array
-      const updated = [processedNotification, ...current];
+    if (!current.some(n => n.id === notification.id)) {
+      // Add the new notification at the beginning of the array
+      const updated = [notification, ...current];
       this.notificationsSource.next(updated);
       this.updateUnreadCount();
-      this.eventBus.cast(NotificationEvent.NOTIFICATION_ADDED, processedNotification);
+      this.eventBus.cast(NotificationEvent.NOTIFICATION_ADDED, notification);
     }
   }
 
@@ -246,21 +235,15 @@ export class NotificationService {
    */
   private updateNotificationInLocalStore(notification: Notification): void {
     const current = this.notificationsSource.value;
+    const index = current.findIndex(n => n.id === notification.id);
     
-    // Ensure we're working with a processed notification with proper timestamp
-    const processedNotification = this.processNotification(notification);
-    
-    // Find and update the notification
-    const updated = current.map(n => {
-      if (n.id === processedNotification.id) {
-        return processedNotification;
-      }
-      return n;
-    });
-    
-    this.notificationsSource.next(updated);
-    this.updateUnreadCount();
-    this.eventBus.cast(NotificationEvent.NOTIFICATION_UPDATED, processedNotification);
+    if (index !== -1) {
+      const updated = [...current];
+      updated[index] = notification;
+      this.notificationsSource.next(updated);
+      this.updateUnreadCount();
+      this.eventBus.cast(NotificationEvent.NOTIFICATION_UPDATED, notification);
+    }
   }
 
   /**
@@ -279,20 +262,15 @@ export class NotificationService {
    * Update multiple notifications in the local store
    */
   private updateMultipleNotificationsInLocalStore(notifications: Notification[]): void {
-    // Process all notifications
-    const processedNotifications = this.processNotifications(notifications);
-    
-    // Get current notifications
     const current = this.notificationsSource.value;
+    const updated = [...current];
     
-    // Create a map of processed notifications by ID for quick lookup
-    const updatedMap = new Map<string, Notification>();
-    processedNotifications.forEach(n => updatedMap.set(n.id, n));
-    
-    // Update existing notifications and keep the ones that weren't updated
-    const updated = current.map(n => {
-      const updatedNotification = updatedMap.get(n.id);
-      return updatedNotification || n;
+    // Update each notification
+    notifications.forEach(notification => {
+      const index = updated.findIndex(n => n.id === notification.id);
+      if (index !== -1) {
+        updated[index] = notification;
+      }
     });
     
     this.notificationsSource.next(updated);
@@ -301,44 +279,10 @@ export class NotificationService {
   }
 
   /**
-   * Update the unread notification count
+   * Update the unread count
    */
   private updateUnreadCount(): void {
     const count = this.notificationsSource.value.filter(n => !n.isRead).length;
     this.unreadCountSource.next(count);
-  }
-
-  /**
-   * Get the CSS class for a notification type
-   */
-  public getNotificationClass(type: NotificationType): string {
-    switch (type) {
-      case NotificationType.Success:
-        return 'notification-success';
-      case NotificationType.Warning:
-        return 'notification-warning';
-      case NotificationType.Error:
-        return 'notification-error';
-      case NotificationType.Info:
-      default:
-        return 'notification-info';
-    }
-  }
-
-  /**
-   * Get the icon for a notification type
-   */
-  public getNotificationIcon(type: NotificationType): string {
-    switch (type) {
-      case NotificationType.Success:
-        return 'check_circle';
-      case NotificationType.Warning:
-        return 'warning';
-      case NotificationType.Error:
-        return 'error';
-      case NotificationType.Info:
-      default:
-        return 'info';
-    }
   }
 }
