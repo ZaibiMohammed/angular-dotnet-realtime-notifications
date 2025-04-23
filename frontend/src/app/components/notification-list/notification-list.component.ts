@@ -1,9 +1,10 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Subscription } from 'rxjs';
+import { NgEventBus } from 'ng-event-bus';
+
+import { Notification, NotificationType } from '../../models/notification.model';
 import { NotificationService, NotificationEvent } from '../../services/notification.service';
 import { SignalRService, SignalREvent } from '../../services/signalr.service';
-import { Notification, NotificationType } from '../../models/notification.model';
-import { NgEventBus } from 'ng-event-bus';
 
 @Component({
   selector: 'app-notification-list',
@@ -11,57 +12,46 @@ import { NgEventBus } from 'ng-event-bus';
   styleUrls: ['./notification-list.component.scss']
 })
 export class NotificationListComponent implements OnInit, OnDestroy {
+  // Notifications to display
   notifications: Notification[] = [];
-  isLoading: boolean = true;
-  connectionEstablished: boolean = false;
-  unreadCount: number = 0;
   
-  // For filtering
-  selectedType: string = 'all';
-  showUnreadOnly: boolean = false;
+  // Connection status
+  isConnected = false;
   
-  // Expose NotificationType enum to template
-  NotificationType = NotificationType;
+  // Filter states
+  showReadNotifications = true;
+  selectedType: NotificationType | null = null;
   
-  // Mock user ID (in a real app this would come from authentication)
-  private readonly mockUserId: string = 'user1';
-  
-  // Subscriptions to clean up on destroy
+  // Track subscriptions for cleanup
   private subscriptions: Subscription[] = [];
-
+  
   constructor(
     private notificationService: NotificationService,
     private signalRService: SignalRService,
     private eventBus: NgEventBus
   ) {}
 
-  async ngOnInit(): Promise<void> {
-    // Initialize notification service with mock user ID
-    await this.notificationService.initialize(this.mockUserId);
-    
-    // Subscribe to notifications
-    const notificationsSub = this.notificationService.notifications$.subscribe(
-      notifications => {
-        this.notifications = notifications;
-        this.isLoading = false;
-      }
+  ngOnInit(): void {
+    // Subscribe to notifications changes
+    this.subscriptions.push(
+      this.notificationService.notifications$.subscribe(
+        notifications => {
+          this.notifications = this.applyFilters(notifications);
+        }
+      )
     );
-    this.subscriptions.push(notificationsSub);
-    
-    // Subscribe to unread count
-    const unreadSub = this.notificationService.unreadCount$.subscribe(
-      count => this.unreadCount = count
+
+    // Subscribe to connection state changes
+    this.subscriptions.push(
+      this.signalRService.connectionState$.subscribe(
+        isConnected => {
+          this.isConnected = isConnected;
+        }
+      )
     );
-    this.subscriptions.push(unreadSub);
-    
-    // Subscribe to connection state
-    const connectionSub = this.signalRService.connectionState$.subscribe(
-      connected => this.connectionEstablished = connected
-    );
-    this.subscriptions.push(connectionSub);
-    
-    // Subscribe to notification events from EventBus
-    this.subscribeToEventBus();
+
+    // Initialize the service and load notifications
+    this.initialize();
   }
 
   ngOnDestroy(): void {
@@ -70,80 +60,28 @@ export class NotificationListComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Subscribe to relevant events from the EventBus
+   * Initialize the notification service
    */
-  private subscribeToEventBus(): void {
-    // Notification received event
-    const receivedSub = this.eventBus.on(SignalREvent.NOTIFICATION_RECEIVED).subscribe(() => {
-      // We don't need to do anything here because the notification service
-      // already updates its state, which we're subscribed to
-    });
-    this.subscriptions.push(receivedSub);
-    
-    // Connection state changed event
-    const connectionSub = this.eventBus.on(SignalREvent.CONNECTION_STATE_CHANGED).subscribe(() => {
-      // Update connection state flag (already handled by subscribing to connectionState$)
-    });
-    this.subscriptions.push(connectionSub);
+  async initialize(): Promise<void> {
+    try {
+      await this.notificationService.initialize();
+    } catch (error) {
+      console.error('Error initializing notifications:', error);
+    }
   }
 
   /**
-   * Mark a notification as read
+   * Filter the notifications based on user selections
    */
-  onMarkAsRead(notificationId: string): void {
-    this.notificationService.markAsRead(notificationId).subscribe();
-  }
-
-  /**
-   * Delete a notification
-   */
-  onDelete(notificationId: string): void {
-    this.notificationService.deleteNotification(notificationId).subscribe();
-  }
-
-  /**
-   * Mark all notifications as read
-   */
-  markAllAsRead(): void {
-    this.notificationService.markAllAsRead(this.mockUserId).subscribe();
-  }
-
-  /**
-   * Send a test notification
-   */
-  sendTestNotification(): void {
-    this.notificationService.sendTestNotification().subscribe();
-  }
-
-  /**
-   * Filter notifications by type
-   */
-  onTypeFilterChange(event: Event): void {
-    this.selectedType = (event.target as HTMLSelectElement).value;
-  }
-
-  /**
-   * Toggle showing unread notifications only
-   */
-  toggleUnreadOnly(): void {
-    this.showUnreadOnly = !this.showUnreadOnly;
-  }
-
-  /**
-   * Get filtered notifications based on selected filters
-   */
-  get filteredNotifications(): Notification[] {
-    return this.notifications.filter(notification => {
-      // Filter by type
-      if (this.selectedType !== 'all') {
-        const typeValue = Number(this.selectedType);
-        if (notification.type !== typeValue) {
-          return false;
-        }
+  private applyFilters(notifications: Notification[]): Notification[] {
+    return notifications.filter(notification => {
+      // Filter by read status
+      if (!this.showReadNotifications && notification.isRead) {
+        return false;
       }
       
-      // Filter by read status
-      if (this.showUnreadOnly && notification.isRead) {
+      // Filter by type
+      if (this.selectedType !== null && notification.type !== this.selectedType) {
         return false;
       }
       
@@ -152,20 +90,154 @@ export class NotificationListComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Get notification type label for display
+   * Toggle showing read notifications
    */
-  getNotificationTypeLabel(type: NotificationType): string {
+  toggleReadNotifications(): void {
+    this.showReadNotifications = !this.showReadNotifications;
+    this.updateFilteredNotifications();
+  }
+
+  /**
+   * Set the type filter
+   */
+  setTypeFilter(type: NotificationType | null): void {
+    this.selectedType = type;
+    this.updateFilteredNotifications();
+  }
+
+  /**
+   * Update the filtered notifications based on current filters
+   */
+  updateFilteredNotifications(): void {
+    this.notifications = this.applyFilters(this.notificationService.notifications$.getValue());
+  }
+
+  /**
+   * Mark a notification as read
+   */
+  markAsRead(notification: Notification): void {
+    if (!notification.isRead) {
+      this.notificationService.markAsRead(notification.id).subscribe(
+        () => {
+          console.log('Notification marked as read:', notification.id);
+        },
+        error => {
+          console.error('Error marking notification as read:', error);
+        }
+      );
+    }
+  }
+
+  /**
+   * Mark all notifications as read
+   */
+  markAllAsRead(): void {
+    // Get the notifications that are currently unread
+    const unreadNotifications = this.notifications.filter(n => !n.isRead);
+    
+    if (unreadNotifications.length > 0) {
+      // This would normally use a user ID in a real application
+      // For this example, we'll use a default user ID
+      this.notificationService.markAllAsRead('default-user').subscribe(
+        () => {
+          console.log('All notifications marked as read');
+        },
+        error => {
+          console.error('Error marking all notifications as read:', error);
+        }
+      );
+    }
+  }
+
+  /**
+   * Delete a notification
+   */
+  deleteNotification(notification: Notification): void {
+    this.notificationService.deleteNotification(notification.id).subscribe(
+      () => {
+        console.log('Notification deleted:', notification.id);
+      },
+      error => {
+        console.error('Error deleting notification:', error);
+      }
+    );
+  }
+
+  /**
+   * Send a test notification
+   */
+  sendTestNotification(): void {
+    this.notificationService.sendTestNotification().subscribe(
+      notification => {
+        console.log('Test notification sent:', notification);
+      },
+      error => {
+        console.error('Error sending test notification:', error);
+      }
+    );
+  }
+
+  /**
+   * Refresh the connection to SignalR
+   */
+  refreshConnection(): void {
+    this.signalRService.stopConnection().then(() => {
+      this.signalRService.startConnection();
+    });
+  }
+
+  /**
+   * Get a CSS class for a notification type
+   */
+  getNotificationClass(type: NotificationType): string {
+    return this.notificationService.getNotificationClass(type);
+  }
+
+  /**
+   * Get an icon for a notification type
+   */
+  getNotificationIcon(type: NotificationType): string {
+    return this.notificationService.getNotificationIcon(type);
+  }
+
+  /**
+   * Get a human-readable name for a notification type
+   */
+  getNotificationTypeName(type: NotificationType): string {
     switch (type) {
-      case NotificationType.Info:
-        return 'Info';
       case NotificationType.Success:
         return 'Success';
       case NotificationType.Warning:
         return 'Warning';
       case NotificationType.Error:
         return 'Error';
+      case NotificationType.Info:
       default:
-        return 'Unknown';
+        return 'Info';
+    }
+  }
+
+  /**
+   * Format a timestamp as a relative time (e.g., "5 minutes ago")
+   */
+  getRelativeTime(timestamp: Date): string {
+    const now = new Date();
+    const diff = now.getTime() - new Date(timestamp).getTime();
+    
+    // Convert milliseconds to appropriate units
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) {
+      return `${days} day${days === 1 ? '' : 's'} ago`;
+    } else if (hours > 0) {
+      return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    } else if (minutes > 0) {
+      return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+    } else {
+      return 'Just now';
     }
   }
 }
