@@ -1,0 +1,37 @@
+<div class="app-container">
+  <header class="app-header">
+    <div class="header-content">
+      <h1 class="app-title">{{ title }}</h1>
+      <div class="connection-status" [ngClass]="{'connected': connectionStatus$ | async}">
+        <div class="status-indicator"></div>
+        <span class="status-text">{{ (connectionStatus$ | async) ? 'Connected' : 'Disconnected' }}</span>
+      </div>
+      <div class="notification-area">
+        <app-notification-badge></app-notification-badge>
+      </div>
+    </div>
+  </header>
+  
+  <main class="app-content">
+    <div class="container">
+      <div class="description">
+        <h2>Angular Real-time Notifications with ng-event-bus and .NET 8</h2>
+        <p>
+          This demo shows how to implement a real-time notification system using:
+        </p>
+        <ul>
+          <li>Angular frontend</li>
+          <li>ng-event-bus for frontend event management</li>
+          <li>.NET 8 backend</li>
+          <li>SignalR for real-time communication</li>
+        </ul>
+        <p>
+          Click the notification icon in the header to see the notification panel.
+          You can test sending different types of notifications using the buttons in the panel.
+        </p>
+      </div>
+    </div>
+  </main>
+  
+  <router-outlet></router-outlet>
+</div>
