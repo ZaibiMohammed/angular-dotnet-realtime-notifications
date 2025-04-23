@@ -1,0 +1,27 @@
+<div class="notification" [ngClass]="[getNotificationClass(), notification.isRead ? 'read' : 'unread']">
+  <div class="notification-icon">
+    <i [ngClass]="getIconClass()"></i>
+  </div>
+  <div class="notification-content">
+    <div class="notification-header">
+      <h5 class="notification-title">{{ notification.title }}</h5>
+      <span class="notification-time">{{ timeAgoText }}</span>
+    </div>
+    <div class="notification-body">
+      <p>{{ notification.message }}</p>
+    </div>
+    <div class="notification-actions">
+      <button 
+        *ngIf="!notification.isRead" 
+        class="btn btn-sm btn-primary" 
+        (click)="onMarkAsRead()">
+        Mark as read
+      </button>
+      <button 
+        class="btn btn-sm btn-danger" 
+        (click)="onDelete()">
+        Delete
+      </button>
+    </div>
+  </div>
+</div>
