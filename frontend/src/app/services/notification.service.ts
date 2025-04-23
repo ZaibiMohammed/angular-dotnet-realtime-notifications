@@ -176,7 +176,7 @@ export class NotificationService {
           const current = this.notificationsSource.value;
           const updated = current.map(n => ({ ...n, isRead: true }));
           this.notificationsSource.next(updated);
-          this.unreadCountSource.next(0);
+          this.updateUnreadCount();
           this.eventBus.cast(NotificationEvent.NOTIFICATIONS_UPDATED, updated);
         })
       );
@@ -189,11 +189,35 @@ export class NotificationService {
     return this.http.delete(`${this.apiUrl}/${notificationId}`)
       .pipe(
         tap(() => {
-          // We don't remove it from the local store here because the deletion event will come via SignalR
-          // But we can handle the UI update in case SignalR is slow
           this.removeNotificationFromLocalStore(notificationId);
         })
       );
+  }
+
+  /**
+   * Acknowledge a notification using SignalR
+   */
+  public async acknowledgeNotification(notificationId: string): Promise<void> {
+    await this.signalRService.acknowledgeNotification(notificationId);
+  }
+
+  /**
+   * Process an array of notifications (convert timestamps to Date objects)
+   */
+  private processNotifications(notifications: Notification[]): Notification[] {
+    return notifications.map(notification => this.processNotification(notification));
+  }
+
+  /**
+   * Process a single notification (convert timestamp to Date object)
+   */
+  private processNotification(notification: Notification): Notification {
+    return {
+      ...notification,
+      timestamp: typeof notification.timestamp === 'string' 
+        ? new Date(notification.timestamp) 
+        : notification.timestamp
+    };
   }
 
   /**
@@ -202,21 +226,17 @@ export class NotificationService {
   private addNotificationToLocalStore(notification: Notification): void {
     const current = this.notificationsSource.value;
     
-    // Check if it already exists (in case of duplicate events)
-    const exists = current.some(n => n.id === notification.id);
+    // Ensure we're working with a processed notification with proper timestamp
+    const processedNotification = this.processNotification(notification);
+    
+    // Check if notification already exists
+    const exists = current.some(n => n.id === processedNotification.id);
     
     if (!exists) {
-      // Process the notification to ensure timestamps are Date objects
-      const processedNotification = this.processNotification(notification);
-      
-      // Add to the beginning of the array (most recent first)
+      // Add the new notification to the beginning of the array
       const updated = [processedNotification, ...current];
-      
-      // Update the state
       this.notificationsSource.next(updated);
       this.updateUnreadCount();
-      
-      // Emit event
       this.eventBus.cast(NotificationEvent.NOTIFICATION_ADDED, processedNotification);
     }
   }
@@ -226,23 +246,21 @@ export class NotificationService {
    */
   private updateNotificationInLocalStore(notification: Notification): void {
     const current = this.notificationsSource.value;
-    const index = current.findIndex(n => n.id === notification.id);
     
-    if (index !== -1) {
-      // Process the notification to ensure timestamps are Date objects
-      const processedNotification = this.processNotification(notification);
-      
-      // Create a new array with the updated notification
-      const updated = [...current];
-      updated[index] = processedNotification;
-      
-      // Update the state
-      this.notificationsSource.next(updated);
-      this.updateUnreadCount();
-      
-      // Emit event
-      this.eventBus.cast(NotificationEvent.NOTIFICATION_UPDATED, processedNotification);
-    }
+    // Ensure we're working with a processed notification with proper timestamp
+    const processedNotification = this.processNotification(notification);
+    
+    // Find and update the notification
+    const updated = current.map(n => {
+      if (n.id === processedNotification.id) {
+        return processedNotification;
+      }
+      return n;
+    });
+    
+    this.notificationsSource.next(updated);
+    this.updateUnreadCount();
+    this.eventBus.cast(NotificationEvent.NOTIFICATION_UPDATED, processedNotification);
   }
 
   /**
@@ -252,11 +270,8 @@ export class NotificationService {
     const current = this.notificationsSource.value;
     const updated = current.filter(n => n.id !== notificationId);
     
-    // Update the state
     this.notificationsSource.next(updated);
     this.updateUnreadCount();
-    
-    // Emit event
     this.eventBus.cast(NotificationEvent.NOTIFICATION_DELETED, notificationId);
   }
 
@@ -264,58 +279,29 @@ export class NotificationService {
    * Update multiple notifications in the local store
    */
   private updateMultipleNotificationsInLocalStore(notifications: Notification[]): void {
+    // Process all notifications
+    const processedNotifications = this.processNotifications(notifications);
+    
+    // Get current notifications
     const current = this.notificationsSource.value;
-    const updated = [...current];
     
-    // Process notifications to ensure timestamps are Date objects
-    const processed = this.processNotifications(notifications);
+    // Create a map of processed notifications by ID for quick lookup
+    const updatedMap = new Map<string, Notification>();
+    processedNotifications.forEach(n => updatedMap.set(n.id, n));
     
-    // Update each notification
-    processed.forEach(notification => {
-      const index = updated.findIndex(n => n.id === notification.id);
-      
-      if (index !== -1) {
-        updated[index] = notification;
-      } else {
-        updated.push(notification);
-      }
+    // Update existing notifications and keep the ones that weren't updated
+    const updated = current.map(n => {
+      const updatedNotification = updatedMap.get(n.id);
+      return updatedNotification || n;
     });
     
-    // Sort by timestamp (most recent first)
-    updated.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-    
-    // Update the state
     this.notificationsSource.next(updated);
     this.updateUnreadCount();
-    
-    // Emit event
     this.eventBus.cast(NotificationEvent.NOTIFICATIONS_UPDATED, updated);
   }
 
   /**
-   * Process a collection of notifications to ensure timestamps are Date objects
-   */
-  private processNotifications(notifications: Notification[]): Notification[] {
-    return notifications.map(notification => this.processNotification(notification));
-  }
-
-  /**
-   * Process a notification to ensure timestamp is a Date object
-   */
-  private processNotification(notification: Notification): Notification {
-    // Convert timestamp string to Date object if needed
-    if (typeof notification.timestamp === 'string') {
-      return {
-        ...notification,
-        timestamp: new Date(notification.timestamp)
-      };
-    }
-    
-    return notification;
-  }
-
-  /**
-   * Update the count of unread notifications
+   * Update the unread notification count
    */
   private updateUnreadCount(): void {
     const count = this.notificationsSource.value.filter(n => !n.isRead).length;
@@ -323,37 +309,36 @@ export class NotificationService {
   }
 
   /**
-   * Get a notification by ID
+   * Get the CSS class for a notification type
    */
-  public getNotificationById(notificationId: string): Notification | undefined {
-    return this.notificationsSource.value.find(n => n.id === notificationId);
+  public getNotificationClass(type: NotificationType): string {
+    switch (type) {
+      case NotificationType.Success:
+        return 'notification-success';
+      case NotificationType.Warning:
+        return 'notification-warning';
+      case NotificationType.Error:
+        return 'notification-error';
+      case NotificationType.Info:
+      default:
+        return 'notification-info';
+    }
   }
 
   /**
-   * Get all notifications with filtering options
+   * Get the icon for a notification type
    */
-  public getFilteredNotifications(
-    type?: NotificationType, 
-    isRead?: boolean, 
-    userId?: string
-  ): Notification[] {
-    return this.notificationsSource.value.filter(notification => {
-      // Type filter
-      if (type !== undefined && notification.type !== type) {
-        return false;
-      }
-      
-      // Read status filter
-      if (isRead !== undefined && notification.isRead !== isRead) {
-        return false;
-      }
-      
-      // User ID filter
-      if (userId !== undefined && notification.userId !== userId && notification.userId !== null) {
-        return false;
-      }
-      
-      return true;
-    });
+  public getNotificationIcon(type: NotificationType): string {
+    switch (type) {
+      case NotificationType.Success:
+        return 'check_circle';
+      case NotificationType.Warning:
+        return 'warning';
+      case NotificationType.Error:
+        return 'error';
+      case NotificationType.Info:
+      default:
+        return 'info';
+    }
   }
 }
