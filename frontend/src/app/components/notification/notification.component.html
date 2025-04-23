@@ -1,27 +1,60 @@
-<div class="notification" [ngClass]="[getNotificationClass(), notification.isRead ? 'read' : 'unread']">
-  <div class="notification-icon">
-    <i [ngClass]="getIconClass()"></i>
-  </div>
-  <div class="notification-content">
-    <div class="notification-header">
-      <h5 class="notification-title">{{ notification.title }}</h5>
-      <span class="notification-time">{{ timeAgoText }}</span>
-    </div>
-    <div class="notification-body">
-      <p>{{ notification.message }}</p>
-    </div>
+<div class="notification-panel">
+  <div class="notification-header">
+    <h2>Notifications</h2>
     <div class="notification-actions">
-      <button 
-        *ngIf="!notification.isRead" 
-        class="btn btn-sm btn-primary" 
-        (click)="onMarkAsRead()">
-        Mark as read
+      <button class="mark-all-btn" (click)="markAllAsRead()" *ngIf="(unreadCount$ | async) > 0">
+        Mark all as read
       </button>
-      <button 
-        class="btn btn-sm btn-danger" 
-        (click)="onDelete()">
-        Delete
-      </button>
+    </div>
+  </div>
+
+  <div class="notification-controls">
+    <button class="control-btn" (click)="createTestNotification()">
+      Send Test Notification
+    </button>
+    <button class="control-btn info-btn" (click)="createCustomNotification(notificationType.Info)">
+      Info
+    </button>
+    <button class="control-btn success-btn" (click)="createCustomNotification(notificationType.Success)">
+      Success
+    </button>
+    <button class="control-btn warning-btn" (click)="createCustomNotification(notificationType.Warning)">
+      Warning
+    </button>
+    <button class="control-btn error-btn" (click)="createCustomNotification(notificationType.Error)">
+      Error
+    </button>
+  </div>
+
+  <ng-container *ngIf="(notifications$ | async)?.length === 0">
+    <div class="no-notifications">
+      <p>No notifications to display.</p>
+    </div>
+  </ng-container>
+
+  <div class="notification-list">
+    <div *ngFor="let notification of notifications$ | async" 
+         class="notification-item" 
+         [ngClass]="[getNotificationClass(notification.type), notification.isRead ? 'read' : 'unread']"
+         (click)="markAsRead(notification)">
+      
+      <div class="notification-icon">
+        <span class="material-icons">{{ getNotificationIcon(notification.type) }}</span>
+      </div>
+      
+      <div class="notification-content">
+        <div class="notification-header">
+          <h3 class="notification-title">{{ notification.title }}</h3>
+          <span class="notification-time">{{ formatTime(notification.timestamp) }}</span>
+        </div>
+        <p class="notification-message">{{ notification.message }}</p>
+      </div>
+      
+      <div class="notification-actions">
+        <button class="delete-btn" (click)="deleteNotification(notification, $event)">
+          <span class="material-icons">close</span>
+        </button>
+      </div>
     </div>
   </div>
 </div>
