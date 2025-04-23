@@ -1,66 +1,102 @@
-<div class="notification-list-container">
+<div class="notification-container">
   <div class="notification-header">
-    <h3>
-      Notifications 
-      <span *ngIf="unreadCount > 0" class="badge bg-primary">{{ unreadCount }}</span>
-    </h3>
-    
-    <div class="connection-status" [class.connected]="connectionEstablished">
-      <i class="bi" [ngClass]="connectionEstablished ? 'bi-wifi' : 'bi-wifi-off'"></i>
-      {{ connectionEstablished ? 'Connected' : 'Disconnected' }}
+    <h2>Notifications</h2>
+    <div class="connection-status" [class.connected]="isConnected" [class.disconnected]="!isConnected">
+      <span class="status-dot"></span>
+      <span class="status-text">{{ isConnected ? 'Connected' : 'Disconnected' }}</span>
+      <button class="refresh-button" (click)="refreshConnection()" title="Refresh connection">
+        <i class="material-icons">refresh</i>
+      </button>
     </div>
   </div>
-
+  
   <div class="notification-controls">
     <div class="filter-controls">
-      <div class="form-group">
-        <label for="typeFilter">Filter by type:</label>
-        <select id="typeFilter" class="form-select" [value]="selectedType" (change)="onTypeFilterChange($event)">
-          <option value="all">All types</option>
-          <option [value]="NotificationType.Info">Info</option>
-          <option [value]="NotificationType.Success">Success</option>
-          <option [value]="NotificationType.Warning">Warning</option>
-          <option [value]="NotificationType.Error">Error</option>
-        </select>
+      <div class="filter-group">
+        <label class="checkbox-container">
+          <input type="checkbox" [checked]="showReadNotifications" (change)="toggleReadNotifications()">
+          <span class="checkmark"></span>
+          Show read notifications
+        </label>
       </div>
       
-      <div class="form-check">
-        <input type="checkbox" class="form-check-input" id="unreadOnly" 
-               [checked]="showUnreadOnly" (change)="toggleUnreadOnly()">
-        <label class="form-check-label" for="unreadOnly">Show unread only</label>
+      <div class="filter-group">
+        <div class="filter-type-label">Filter by type:</div>
+        <div class="filter-type-buttons">
+          <button class="filter-button" 
+            [class.active]="selectedType === null" 
+            (click)="setTypeFilter(null)">
+            All
+          </button>
+          <button class="filter-button info-button" 
+            [class.active]="selectedType === 0" 
+            (click)="setTypeFilter(0)">
+            <i class="material-icons">info</i> Info
+          </button>
+          <button class="filter-button success-button" 
+            [class.active]="selectedType === 1" 
+            (click)="setTypeFilter(1)">
+            <i class="material-icons">check_circle</i> Success
+          </button>
+          <button class="filter-button warning-button" 
+            [class.active]="selectedType === 2" 
+            (click)="setTypeFilter(2)">
+            <i class="material-icons">warning</i> Warning
+          </button>
+          <button class="filter-button error-button" 
+            [class.active]="selectedType === 3" 
+            (click)="setTypeFilter(3)">
+            <i class="material-icons">error</i> Error
+          </button>
+        </div>
       </div>
     </div>
     
     <div class="action-buttons">
-      <button class="btn btn-primary" (click)="sendTestNotification()">
-        <i class="bi bi-bell"></i> Send Test Notification
+      <button class="action-button mark-read-button" (click)="markAllAsRead()">
+        <i class="material-icons">done_all</i> Mark all as read
       </button>
-      <button class="btn btn-secondary" [disabled]="unreadCount === 0" (click)="markAllAsRead()">
-        <i class="bi bi-check-all"></i> Mark All as Read
+      <button class="action-button test-button" (click)="sendTestNotification()">
+        <i class="material-icons">add_alert</i> Send test notification
       </button>
     </div>
   </div>
-
-  <div class="notification-list">
-    <div *ngIf="isLoading" class="loading-spinner">
-      <div class="spinner-border text-primary" role="status">
-        <span class="visually-hidden">Loading...</span>
+  
+  <div class="notification-list" *ngIf="notifications.length > 0">
+    <div class="notification-item" 
+      *ngFor="let notification of notifications" 
+      [class.unread]="!notification.isRead"
+      [ngClass]="getNotificationClass(notification.type)">
+      
+      <div class="notification-icon">
+        <i class="material-icons">{{ getNotificationIcon(notification.type) }}</i>
       </div>
-      <p>Loading notifications...</p>
+      
+      <div class="notification-content" (click)="markAsRead(notification)">
+        <div class="notification-title">{{ notification.title }}</div>
+        <div class="notification-message">{{ notification.message }}</div>
+        <div class="notification-metadata">
+          <span class="notification-time">{{ getRelativeTime(notification.timestamp) }}</span>
+          <span class="notification-type">{{ getNotificationTypeName(notification.type) }}</span>
+        </div>
+      </div>
+      
+      <div class="notification-actions">
+        <button class="action-icon" *ngIf="!notification.isRead" (click)="markAsRead(notification)" title="Mark as read">
+          <i class="material-icons">done</i>
+        </button>
+        <button class="action-icon delete" (click)="deleteNotification(notification)" title="Delete">
+          <i class="material-icons">delete</i>
+        </button>
+      </div>
     </div>
-    
-    <div *ngIf="!isLoading && filteredNotifications.length === 0" class="no-notifications">
-      <i class="bi bi-bell-slash"></i>
-      <p>No notifications found</p>
-    </div>
-    
-    <ng-container *ngIf="!isLoading && filteredNotifications.length > 0">
-      <app-notification 
-        *ngFor="let notification of filteredNotifications" 
-        [notification]="notification"
-        (markAsRead)="onMarkAsRead($event)"
-        (delete)="onDelete($event)">
-      </app-notification>
-    </ng-container>
+  </div>
+  
+  <div class="empty-state" *ngIf="notifications.length === 0">
+    <i class="material-icons">notifications_none</i>
+    <p>No notifications to display</p>
+    <button class="test-button" (click)="sendTestNotification()">
+      <i class="material-icons">add_alert</i> Send test notification
+    </button>
   </div>
 </div>
