@@ -1,0 +1,66 @@
+<div class="notification-list-container">
+  <div class="notification-header">
+    <h3>
+      Notifications 
+      <span *ngIf="unreadCount > 0" class="badge bg-primary">{{ unreadCount }}</span>
+    </h3>
+    
+    <div class="connection-status" [class.connected]="connectionEstablished">
+      <i class="bi" [ngClass]="connectionEstablished ? 'bi-wifi' : 'bi-wifi-off'"></i>
+      {{ connectionEstablished ? 'Connected' : 'Disconnected' }}
+    </div>
+  </div>
+
+  <div class="notification-controls">
+    <div class="filter-controls">
+      <div class="form-group">
+        <label for="typeFilter">Filter by type:</label>
+        <select id="typeFilter" class="form-select" [value]="selectedType" (change)="onTypeFilterChange($event)">
+          <option value="all">All types</option>
+          <option [value]="NotificationType.Info">Info</option>
+          <option [value]="NotificationType.Success">Success</option>
+          <option [value]="NotificationType.Warning">Warning</option>
+          <option [value]="NotificationType.Error">Error</option>
+        </select>
+      </div>
+      
+      <div class="form-check">
+        <input type="checkbox" class="form-check-input" id="unreadOnly" 
+               [checked]="showUnreadOnly" (change)="toggleUnreadOnly()">
+        <label class="form-check-label" for="unreadOnly">Show unread only</label>
+      </div>
+    </div>
+    
+    <div class="action-buttons">
+      <button class="btn btn-primary" (click)="sendTestNotification()">
+        <i class="bi bi-bell"></i> Send Test Notification
+      </button>
+      <button class="btn btn-secondary" [disabled]="unreadCount === 0" (click)="markAllAsRead()">
+        <i class="bi bi-check-all"></i> Mark All as Read
+      </button>
+    </div>
+  </div>
+
+  <div class="notification-list">
+    <div *ngIf="isLoading" class="loading-spinner">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+      <p>Loading notifications...</p>
+    </div>
+    
+    <div *ngIf="!isLoading && filteredNotifications.length === 0" class="no-notifications">
+      <i class="bi bi-bell-slash"></i>
+      <p>No notifications found</p>
+    </div>
+    
+    <ng-container *ngIf="!isLoading && filteredNotifications.length > 0">
+      <app-notification 
+        *ngFor="let notification of filteredNotifications" 
+        [notification]="notification"
+        (markAsRead)="onMarkAsRead($event)"
+        (delete)="onDelete($event)">
+      </app-notification>
+    </ng-container>
+  </div>
+</div>
