@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable } from 'rxjs';
-import { map, tap } from 'rxjs/operators';
+import { BehaviorSubject, Observable, throwError } from 'rxjs';
+import { map, tap, catchError } from 'rxjs/operators';
 import { NgEventBus } from 'ng-event-bus';
 import { Notification, NotificationType } from '../models/notification.model';
 import { environment } from '../../environments/environment';
@@ -27,6 +27,13 @@ export enum NotificationEvent {
 export class NotificationService {
   private readonly apiUrl = `${environment.apiUrl}/notifications`;
   
+  /**
+   * Get the API URL for debugging purposes
+   */
+  public getApiUrl(): string {
+    return this.apiUrl;
+  }
+  
   // Store notifications in memory
   private notificationsSource = new BehaviorSubject<Notification[]>([]);
   notifications$ = this.notificationsSource.asObservable();
@@ -48,14 +55,32 @@ export class NotificationService {
    * Initialize the service by connecting to SignalR and loading notifications
    */
   public async initialize(userId?: string): Promise<void> {
-    // Start SignalR connection
-    await this.signalRService.startConnection();
+    console.log('Initializing notification service for user:', userId);
     
-    // Load initial notifications
-    if (userId) {
-      this.getUserNotifications(userId).subscribe();
-    } else {
-      this.getAllNotifications().subscribe();
+    try {
+      // Start SignalR connection
+      console.log('Starting SignalR connection...');
+      await this.signalRService.startConnection();
+      console.log('SignalR connection started successfully');
+      
+      // Load initial notifications
+      console.log('Loading initial notifications...');
+      if (userId) {
+        console.log(`Getting notifications for user: ${userId}`);
+        this.getUserNotifications(userId).subscribe(
+          notifications => console.log(`Loaded ${notifications.length} notifications for user`),
+          error => console.error('Error loading user notifications:', error)
+        );
+      } else {
+        console.log('Getting all notifications');
+        this.getAllNotifications().subscribe(
+          notifications => console.log(`Loaded ${notifications.length} notifications`),
+          error => console.error('Error loading all notifications:', error)
+        );
+      }
+    } catch (error) {
+      console.error('Error during notification service initialization:', error);
+      throw error;
     }
   }
 
@@ -96,13 +121,24 @@ export class NotificationService {
    * Get all notifications
    */
   public getAllNotifications(): Observable<Notification[]> {
+    console.log('Fetching all notifications from:', this.apiUrl);
     return this.http.get<Notification[]>(this.apiUrl)
       .pipe(
-        map(notifications => this.processNotifications(notifications)),
+        map(notifications => {
+          console.log('Received notifications from API:', notifications);
+          return this.processNotifications(notifications);
+        }),
         tap(notifications => {
+          console.log('Processed notifications:', notifications);
           this.notificationsSource.next(notifications);
           this.updateUnreadCount();
           this.eventBus.cast(NotificationEvent.NOTIFICATIONS_LOADED, notifications);
+        }),
+        catchError((error: any) => {
+          console.error('Error fetching notifications:', error);
+          console.error('API URL:', this.apiUrl);
+          console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+          return throwError(() => error);
         })
       );
   }
@@ -111,13 +147,24 @@ export class NotificationService {
    * Get notifications for a specific user
    */
   public getUserNotifications(userId: string): Observable<Notification[]> {
+    console.log(`Fetching notifications for user ${userId} from: ${this.apiUrl}/user/${userId}`);
     return this.http.get<Notification[]>(`${this.apiUrl}/user/${userId}`)
       .pipe(
-        map(notifications => this.processNotifications(notifications)),
+        map(notifications => {
+          console.log(`Received ${notifications.length} notifications for user ${userId}:`, notifications);
+          return this.processNotifications(notifications);
+        }),
         tap(notifications => {
+          console.log(`Processed ${notifications.length} notifications for user ${userId}`);
           this.notificationsSource.next(notifications);
           this.updateUnreadCount();
           this.eventBus.cast(NotificationEvent.NOTIFICATIONS_LOADED, notifications);
+        }),
+        catchError((error: any) => {
+          console.error(`Error fetching notifications for user ${userId}:`, error);
+          console.error('API URL:', `${this.apiUrl}/user/${userId}`);
+          console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+          return throwError(() => error);
         })
       );
   }
@@ -126,12 +173,24 @@ export class NotificationService {
    * Send a new notification
    */
   public sendNotification(notification: Omit<Notification, 'id' | 'timestamp' | 'isRead'>): Observable<Notification> {
+    console.log('Sending notification:', notification);
     return this.http.post<Notification>(this.apiUrl, notification)
       .pipe(
-        map(newNotification => this.processNotification(newNotification)),
+        map(newNotification => {
+          console.log('Notification created successfully:', newNotification);
+          return this.processNotification(newNotification);
+        }),
         tap(newNotification => {
+          console.log('Broadcasting notification added event');
           // We don't add it to the local store here because it will come via SignalR
           this.eventBus.cast(NotificationEvent.NOTIFICATION_ADDED, newNotification);
+        }),
+        catchError((error: any) => {
+          console.error('Error sending notification:', error);
+          console.error('Notification data:', notification);
+          console.error('API URL:', this.apiUrl);
+          console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+          return throwError(() => error);
         })
       );
   }
@@ -150,17 +209,28 @@ export class NotificationService {
    * Mark a notification as read
    */
   public markAsRead(notificationId: string): Observable<any> {
+    console.log(`Marking notification as read: ${notificationId}`);
     return this.http.put(`${this.apiUrl}/${notificationId}/read`, {})
       .pipe(
         tap(() => {
+          console.log(`Notification ${notificationId} marked as read successfully`);
           // Update the local notification
           const current = this.notificationsSource.value;
           const index = current.findIndex(n => n.id === notificationId);
           
           if (index !== -1) {
+            console.log(`Updating local notification ${notificationId} to read state`);
             const updatedNotification = { ...current[index], isRead: true };
             this.updateNotificationInLocalStore(updatedNotification);
+          } else {
+            console.warn(`Notification ${notificationId} not found in local store`);
           }
+        }),
+        catchError((error: any) => {
+          console.error(`Error marking notification ${notificationId} as read:`, error);
+          console.error('API URL:', `${this.apiUrl}/${notificationId}/read`);
+          console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+          return throwError(() => error);
         })
       );
   }
@@ -186,11 +256,19 @@ export class NotificationService {
    * Delete a notification
    */
   public deleteNotification(notificationId: string): Observable<any> {
+    console.log(`Deleting notification: ${notificationId}`);
     return this.http.delete(`${this.apiUrl}/${notificationId}`)
       .pipe(
         tap(() => {
+          console.log(`Notification ${notificationId} deleted successfully`);
           // Remove from local store - will also be handled by SignalR, but we do it here for quick UI response
           this.removeNotificationFromLocalStore(notificationId);
+        }),
+        catchError((error: any) => {
+          console.error(`Error deleting notification ${notificationId}:`, error);
+          console.error('API URL:', `${this.apiUrl}/${notificationId}`);
+          console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+          return throwError(() => error);
         })
       );
   }

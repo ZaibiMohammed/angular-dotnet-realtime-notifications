@@ -1,7 +1,7 @@
 <div class="notification-badge-container">
   <button class="notification-button" (click)="toggleNotifications()">
     <span class="material-icons">notifications</span>
-    <span class="badge" *ngIf="(unreadCount$ | async) > 0">{{ unreadCount$ | async }}</span>
+    <span class="badge" *ngIf="(unreadCount$ | async)! > 0">{{ (unreadCount$ | async)! }}</span>
   </button>
   
   <div class="notification-dropdown" *ngIf="isOpen">

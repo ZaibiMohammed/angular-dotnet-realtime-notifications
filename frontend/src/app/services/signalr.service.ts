@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HubConnection, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
+import { HubConnection, HubConnectionBuilder, LogLevel, HttpTransportType } from '@microsoft/signalr';
 import { NgEventBus } from 'ng-event-bus';
 import { Notification } from '../models/notification.model';
 import { environment } from '../../environments/environment';
@@ -47,8 +47,13 @@ export class SignalRService {
     }
 
     // Create the connection
+    console.log('Creating SignalR connection to:', this.connectionUrl);
     this.hubConnection = new HubConnectionBuilder()
-      .withUrl(this.connectionUrl)
+      .withUrl(this.connectionUrl, {
+        // Add skipNegotiation and transport options to help with connection issues
+        skipNegotiation: true,
+        transport: HttpTransportType.WebSockets
+      })
       .withAutomaticReconnect({
         nextRetryDelayInMilliseconds: retryContext => {
           // Implement exponential backoff for reconnection attempts
@@ -77,9 +82,9 @@ export class SignalRService {
       this.eventBus.cast(SignalREvent.CONNECTION_STATE_CHANGED, { connected: false, reconnecting: true });
     });
 
-    this.hubConnection.onreconnected(connectionId => {
+    this.hubConnection.onreconnected((connectionId: string | undefined) => {
       console.log('Connection reestablished. Connected with ID:', connectionId);
-      this.connectionId = connectionId;
+      this.connectionId = connectionId || null;
       this.connectionStateSource.next(true);
       this.reconnectAttempts = 0;
       this.eventBus.cast(SignalREvent.CONNECTION_STATE_CHANGED, { connected: true, reconnecting: false });
@@ -100,8 +105,9 @@ export class SignalRService {
 
     try {
       // Start the connection
+      console.log('Attempting to connect to SignalR hub at:', this.connectionUrl);
       await this.hubConnection.start();
-      console.log('SignalR connection established');
+      console.log('SignalR connection established successfully');
       this.connectionStateSource.next(true);
       this.reconnectAttempts = 0;
       
@@ -113,6 +119,8 @@ export class SignalRService {
       
     } catch (error) {
       console.error('Error establishing SignalR connection:', error);
+      console.error('Connection URL:', this.connectionUrl);
+      console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
       this.connectionStateSource.next(false);
       
       // Try to reconnect with exponential backoff

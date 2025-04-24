@@ -1,8 +1,10 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Observable, Subscription } from 'rxjs';
 import { NgEventBus } from 'ng-event-bus';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { NotificationService, NotificationEvent } from '../../services/notification.service';
 import { Notification, NotificationType } from '../../models/notification.model';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-notification',
@@ -20,22 +22,64 @@ export class NotificationComponent implements OnInit, OnDestroy {
   // For template access
   notificationType = NotificationType;
 
+  // Direct API URL for HTTP requests
+  private apiUrl = `${environment.apiUrl}/notifications`;
+  
+  // HTTP options with headers
+  private httpOptions = {
+    headers: new HttpHeaders({
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    })
+  };
+
   constructor(
     private notificationService: NotificationService,
-    private eventBus: NgEventBus
+    private eventBus: NgEventBus,
+    private http: HttpClient
   ) {
     this.notifications$ = this.notificationService.notifications$;
     this.unreadCount$ = this.notificationService.unreadCount$;
+    
+    // Log the notification service instance to verify it's properly injected
+    console.log('NotificationService instance:', this.notificationService);
+    console.log('API URL from environment:', this.notificationService.getApiUrl());
+    console.log('Direct API URL:', this.apiUrl);
   }
 
   ngOnInit(): void {
+    console.log('NotificationComponent.ngOnInit called');
+    
     // Initialize the notification service and load initial data
-    this.notificationService.initialize(this.userId).catch(err => {
-      console.error('Failed to initialize notification service:', err);
-    });
+    this.notificationService.initialize(this.userId)
+      .then(() => {
+        console.log('Notification service initialized successfully');
+        // Force load notifications after initialization
+        this.loadNotifications();
+      })
+      .catch(err => {
+        console.error('Failed to initialize notification service:', err);
+        // Try to load notifications anyway
+        this.loadNotifications();
+      });
 
     // Subscribe to notification events
     this.subscribeToNotificationEvents();
+  }
+  
+  /**
+   * Load notifications from the API
+   */
+  private loadNotifications(): void {
+    console.log('Loading notifications for user:', this.userId);
+    this.notificationService.getUserNotifications(this.userId).subscribe(
+      notifications => {
+        console.log('Loaded notifications:', notifications);
+      },
+      error => {
+        console.error('Error loading notifications:', error);
+      }
+    );
   }
 
   /**
@@ -63,11 +107,15 @@ export class NotificationComponent implements OnInit, OnDestroy {
    * Mark a notification as read
    */
   markAsRead(notification: Notification): void {
+    console.log('markAsRead method called with notification:', notification);
     if (!notification.isRead) {
+      console.log('Calling notificationService.markAsRead with ID:', notification.id);
       this.notificationService.markAsRead(notification.id).subscribe(
-        () => console.log('Notification marked as read'),
+        () => console.log('Notification marked as read successfully'),
         error => console.error('Error marking notification as read:', error)
       );
+    } else {
+      console.log('Notification is already marked as read, skipping');
     }
   }
 
@@ -75,8 +123,9 @@ export class NotificationComponent implements OnInit, OnDestroy {
    * Mark all notifications as read
    */
   markAllAsRead(): void {
+    console.log('markAllAsRead method called for user:', this.userId);
     this.notificationService.markAllAsRead(this.userId).subscribe(
-      () => console.log('All notifications marked as read'),
+      () => console.log('All notifications marked as read successfully'),
       error => console.error('Error marking all notifications as read:', error)
     );
   }
@@ -85,10 +134,12 @@ export class NotificationComponent implements OnInit, OnDestroy {
    * Delete a notification
    */
   deleteNotification(notification: Notification, event: Event): void {
+    console.log('deleteNotification method called with notification:', notification);
     event.stopPropagation(); // Prevent the click from triggering the markAsRead
     
+    console.log('Calling notificationService.deleteNotification with ID:', notification.id);
     this.notificationService.deleteNotification(notification.id).subscribe(
-      () => console.log('Notification deleted'),
+      () => console.log('Notification deleted successfully'),
       error => console.error('Error deleting notification:', error)
     );
   }
@@ -97,9 +148,19 @@ export class NotificationComponent implements OnInit, OnDestroy {
    * Generate a test notification
    */
   createTestNotification(): void {
-    this.notificationService.sendTestNotification().subscribe(
-      () => console.log('Test notification sent'),
-      error => console.error('Error sending test notification:', error)
+    console.log('createTestNotification method called');
+    console.log('Sending direct HTTP request to:', `${this.apiUrl}/test`);
+    
+    // Use direct HTTP request instead of the notification service
+    this.http.post(`${this.apiUrl}/test`, {}, this.httpOptions).subscribe(
+      (response) => {
+        console.log('Test notification sent successfully, response:', response);
+        alert('Test notification sent successfully!');
+      },
+      error => {
+        console.error('Error sending test notification:', error);
+        alert('Error sending test notification. See console for details.');
+      }
     );
   }
 
@@ -107,6 +168,8 @@ export class NotificationComponent implements OnInit, OnDestroy {
    * Create a custom notification
    */
   createCustomNotification(type: NotificationType = NotificationType.Info): void {
+    console.log(`createCustomNotification method called with type: ${NotificationType[type]}`);
+    
     const notification = {
       title: 'Custom Notification',
       message: `This is a custom ${NotificationType[type].toLowerCase()} notification created at ${new Date().toLocaleTimeString()}.`,
@@ -114,9 +177,19 @@ export class NotificationComponent implements OnInit, OnDestroy {
       userId: this.userId
     };
 
-    this.notificationService.sendNotification(notification).subscribe(
-      () => console.log('Custom notification sent'),
-      error => console.error('Error sending custom notification:', error)
+    console.log('Notification object created:', notification);
+    console.log('Sending direct HTTP request to:', this.apiUrl);
+    
+    // Use direct HTTP request instead of the notification service
+    this.http.post(this.apiUrl, notification, this.httpOptions).subscribe(
+      (response) => {
+        console.log('Custom notification sent successfully, response:', response);
+        alert(`Custom ${NotificationType[type].toLowerCase()} notification sent successfully!`);
+      },
+      error => {
+        console.error('Error sending custom notification:', error);
+        alert('Error sending custom notification. See console for details.');
+      }
     );
   }
 

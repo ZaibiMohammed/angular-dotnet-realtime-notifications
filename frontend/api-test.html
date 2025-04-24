@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .button-group {
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 15px;
+            margin-right: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #result {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 400px;
+            overflow: auto;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>API Test</h1>
+    <div class="button-group">
+        <button onclick="getNotifications()">Get All Notifications</button>
+        <button onclick="sendTestNotification()">Send Test Notification</button>
+        <button onclick="sendCustomNotification()">Send Custom Notification</button>
+    </div>
+    <div>
+        <h3>Result:</h3>
+        <pre id="result">Click a button to test the API...</pre>
+    </div>
+
+    <script>
+        const apiUrl = 'http://localhost:5000/api';
+        
+        function displayResult(data, isError = false) {
+            const resultElement = document.getElementById('result');
+            resultElement.textContent = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
+            resultElement.className = isError ? 'error' : '';
+        }
+        
+        function handleError(error) {
+            console.error('API Error:', error);
+            let errorMessage = 'Error: ';
+            
+            if (error.response) {
+                // Server responded with a status code outside the 2xx range
+                errorMessage += `Server returned ${error.response.status}: ${error.response.statusText}`;
+                if (error.response.data) {
+                    errorMessage += `\nDetails: ${JSON.stringify(error.response.data)}`;
+                }
+            } else if (error.request) {
+                // Request was made but no response received
+                errorMessage += 'No response received from server. Check if the API is running.';
+            } else {
+                // Something else happened while setting up the request
+                errorMessage += error.message || 'Unknown error occurred';
+            }
+            
+            displayResult(errorMessage, true);
+        }
+        
+        async function fetchWithTimeout(resource, options = {}) {
+            const { timeout = 8000 } = options;
+            
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+            
+            try {
+                const response = await fetch(resource, {
+                    ...options,
+                    signal: controller.signal
+                });
+                
+                clearTimeout(id);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return response;
+            } catch (error) {
+                clearTimeout(id);
+                throw error;
+            }
+        }
+        
+        async function getNotifications() {
+            displayResult('Fetching notifications...');
+            
+            try {
+                const response = await fetchWithTimeout(`${apiUrl}/notifications`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                displayResult(data);
+            } catch (error) {
+                handleError(error);
+            }
+        }
+        
+        async function sendTestNotification() {
+            displayResult('Sending test notification...');
+            
+            try {
+                const response = await fetchWithTimeout(`${apiUrl}/notifications/test`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                displayResult(data);
+            } catch (error) {
+                handleError(error);
+            }
+        }
+        
+        async function sendCustomNotification() {
+            displayResult('Sending custom notification...');
+            
+            const notification = {
+                title: 'Custom Notification from HTML',
+                message: `This is a test notification sent at ${new Date().toLocaleTimeString()}`,
+                type: 0, // Info type
+                userId: null // Broadcast to all
+            };
+            
+            try {
+                const response = await fetchWithTimeout(`${apiUrl}/notifications`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(notification)
+                });
+                
+                const data = await response.json();
+                displayResult(data);
+            } catch (error) {
+                handleError(error);
+            }
+        }
+    </script>
+</body>
+</html>

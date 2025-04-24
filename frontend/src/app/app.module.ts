@@ -8,12 +8,14 @@ import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
 import { NotificationComponent } from './components/notification/notification.component';
 import { NotificationBadgeComponent } from './components/notification-badge/notification-badge.component';
+import { TestApiComponent } from './test-api.component';
 
 @NgModule({
   declarations: [
     AppComponent,
     NotificationComponent,
-    NotificationBadgeComponent
+    NotificationBadgeComponent,
+    TestApiComponent
   ],
   imports: [
     BrowserModule,

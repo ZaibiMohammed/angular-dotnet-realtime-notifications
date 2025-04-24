@@ -2,7 +2,7 @@
   <div class="notification-header">
     <h2>Notifications</h2>
     <div class="notification-actions">
-      <button class="mark-all-btn" (click)="markAllAsRead()" *ngIf="(unreadCount$ | async) > 0">
+      <button class="mark-all-btn" (click)="markAllAsRead()" *ngIf="(unreadCount$ | async)! > 0">
         Mark all as read
       </button>
     </div>

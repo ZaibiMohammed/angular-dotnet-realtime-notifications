@@ -30,7 +30,9 @@ bld/
 
 # Angular specific
 /node_modules
+frontend/node_modules/
 /dist
+frontend/dist/
 /tmp
 /out-tsc
 /.sass-cache
@@ -40,6 +42,7 @@ bld/
 npm-debug.log
 yarn-error.log
 .pnpm-debug.log
+frontend/.angular/
 
 # IDE specific files
 .idea/
